@@ -1,0 +1,47 @@
+#!/usr/bin/env -S sbcl --script
+
+(require 'uiop)
+(declaim (sb-ext:muffle-conditions cl:warning))
+(setq pacinfo 
+      (with-output-to-string (stream) 
+        (handler-case 
+          (unless (= 0 (sb-ext:process-exit-code (sb-ext:run-program "pactl" '("info") :search t :output stream))) 
+            (format *error-output* "Cannot get process info~%")
+            (sb-ext:exit 1))
+          (error (e) 
+                 (format t "Error: ~A~% (Do you have libpulse installed?)" e) (sb-ext:exit 1)))))
+(setq default-sink-text
+      (remove-if-not (lambda (x) (uiop:string-prefix-p "Default Sink: " x))
+                     (mapcar 
+                       (lambda (x) (string-trim '(#\newline #\space #\tab) x))
+                       (uiop:split-string pacinfo :separator (string  #\newline)))))
+
+(unless (= (length default-sink-text) 1) ; We assume only one result and starts with "Default Sink:"
+  (format *error-output* "Cannot get default sink~%") (sb-ext:exit 1))
+
+(setq default-sink-text (format nil "~A.monitor" (subseq (car default-sink-text) (length "Default Sink: "))))
+
+(setq filename 
+      (multiple-value-bind (sec min hour day mon yr dow dstp tz) (get-decoded-time)
+        (format nil "ScreenRecord-~4,'0d-~2,'0d-~2,'0d_~2,'0d~2,'0d~2,'0d.mp4" yr mon day hour min sec)))
+
+(setq env-output-dir (let ((envcont (uiop:getenv "ONIONREC_DIR")))
+                       (if envcont
+                         (progn
+                           (unless (uiop:string-suffix-p envcont "/") (setq envcont (concatenate 'string envcont "/")))
+                           (ensure-directories-exist envcont)
+                           envcont))))
+(setq output-dir (if env-output-dir env-output-dir (format nil "~A/Videos/" (uiop:getenv "HOME"))))
+
+(setq out-path-str (namestring (merge-pathnames output-dir filename)))
+
+(format t "Starting screen recording to ~A...~%" out-path-str)
+(let ((proc-handle nil))
+(handler-case 
+  (setq proc-handle (sb-ext:run-program "wf-recorder" (list (format nil "-a~A" default-sink-text) "-f" out-path-str) :search t :output t :input t))
+  (error (e) 
+         (format t "Error: ~A~% (Do you have wf-recorder installed?)" e) (sb-ext:exit 1))
+  (sb-sys:interactive-interrupt () 
+                                (format t "Saving record... ~%")
+                                (sb-ext:process-kill proc-handle 2))))
+
