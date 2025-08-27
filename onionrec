@@ -1,4 +1,5 @@
 #!/usr/bin/env -S sbcl --script
+; vim: ft=lisp
 
 (require 'uiop)
 (declaim (sb-ext:muffle-conditions cl:warning))
@@ -29,9 +30,9 @@
                        (if envcont
                          (progn
                            (unless (uiop:string-suffix-p envcont "/") (setq envcont (concatenate 'string envcont "/")))
-                           (ensure-directories-exist envcont)
                            envcont))))
 (setq output-dir (if env-output-dir env-output-dir (format nil "~A/Videos/" (uiop:getenv "HOME"))))
+(ensure-directories-exist output-dir)
 
 (setq out-path-str (namestring (merge-pathnames output-dir filename)))
 
